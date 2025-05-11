@@ -19,7 +19,7 @@ PLAYER_VEL = 7
 window = pygame.display.set_mode((WIDTH, HEIGHT))
 
 # After pygame.init()
-hit_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.wav"))
+hit_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.mp3"))
 
 
 def flip(sprites):
@@ -323,8 +323,25 @@ def main(window):
             # Check collision using mask
             offset_x = snowball.rect.x - player.rect.x
             offset_y = snowball.rect.y - player.rect.y
-            if player.mask.overlap(snowball.mask, (offset_x, offset_y)):
-                snowballs.remove(snowball)
+            if player.mask and snowball.mask:
+                # Create a smaller area in the center of the snowball for collision
+                core_width = int(snowball.sprite.get_width() * 0.8)
+                core_height = int(snowball.sprite.get_height() * 0.4)
+                core_x = (snowball.sprite.get_width() - core_width) // 2
+                core_y = (snowball.sprite.get_height() - core_height) // 2
+
+                # Extract a smaller core surface
+                core_surface = pygame.Surface((core_width, core_height), pygame.SRCALPHA)
+                core_surface.blit(snowball.sprite, (0, 0), pygame.Rect(core_x, core_y, core_width, core_height))
+                core_mask = pygame.mask.from_surface(core_surface)
+
+                # Adjust offset for new mask
+                core_offset_x = snowball.rect.x + core_x - player.rect.x
+                core_offset_y = snowball.rect.y + core_y - player.rect.y
+
+                if player.mask.overlap(core_mask, (core_offset_x, core_offset_y)):
+                    hit_sound.play()
+                    snowballs.remove(snowball)
 
         # Combine all objects for rendering
         all_objects = objects + snowballs
