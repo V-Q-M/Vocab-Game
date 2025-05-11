@@ -11,12 +11,16 @@ pygame.init()
 
 pygame.display.set_caption("Pingo")
 
-WIDTH, HEIGHT = 1200, 1200
+WIDTH, HEIGHT = 1500, 1200
 
 FPS = 60
 PLAYER_VEL = 7
 
 window = pygame.display.set_mode((WIDTH, HEIGHT))
+
+# After pygame.init()
+hit_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.wav"))
+
 
 def flip(sprites):
     return [pygame.transform.flip(sprite, True, False) for sprite in sprites]
@@ -37,13 +41,26 @@ def load_sprite_sheets(dir1, dir2, width, height, direction=False):
             surface.blit(sprite_sheet,(0,0), rect)
             sprites.append(surface)
 
+
+        name = image.replace(".png", "")
+
         if direction:
-            all_sprites[image.replace(".png", "") + "_right"] = sprites
-            all_sprites[image.replace(".png", "") + "_left"] = flip(sprites)
-            all_sprites[image.replace(".png", "") + "_up"] = sprites
-            all_sprites[image.replace(".png", "") + "_down"] = sprites
+            # Example: run_up, idle_left, etc.
+            if name.endswith("_up"):
+                all_sprites[name] = sprites
+            elif name.endswith("_down"):
+                all_sprites[name] = sprites
+            elif name.endswith("_right"):
+                all_sprites[name] = sprites
+            elif name.endswith("_left"):
+                all_sprites[name] = sprites
+
+            else:
+                # Default: assume right-facing and auto-generate flipped versions
+                all_sprites[name + "_right"] = sprites
+                all_sprites[name + "_left"] = flip(sprites)
         else:
-            all_sprites[image.replace(".png", "")] = sprites
+            all_sprites[name] = sprites
 
     return all_sprites
 
@@ -66,7 +83,7 @@ class Player(pygame.sprite.Sprite):
         self.x_vel = 0
         self.y_vel = 0
         self.mask = None
-        self.direction = "left"
+        self.direction = "down"
         self.animation_count = 0
         self.fall_count = 0
 
@@ -162,11 +179,28 @@ class Wall(Object):
         self.mask = pygame.mask.from_surface(self.image)
 
 class SnowBall(Object):
+    SPRITES = load_sprite_sheets("Objects", "Snowball", 256, 256)
+    ANIMATION_DELAY = 8
+
     def __init__(self, x, y, size):
         super().__init__(x, y, size, size)
-        block = get_block(size, "snowball.png")
-        self.image.blit(block, (0, 0))
-        self.mask = pygame.mask.from_surface(self.image)
+        self.sprites = self.SPRITES["spin"]  # Assumes name of sprite sheet is 'spin.png'
+        self.animation_count = 0
+        self.sprite = self.sprites[0]
+        self.image.blit(self.sprite, (0, 0))
+        self.mask = pygame.mask.from_surface(self.sprite)
+        self.fall_speed = 3
+
+    def update(self):
+        self.rect.y += self.fall_speed
+        self.animation_count += 1
+        sprite_index = (self.animation_count // self.ANIMATION_DELAY) % len(self.sprites)
+        self.sprite = self.sprites[sprite_index]
+
+        self.image = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        self.image.blit(self.sprite, (0, 0))
+        self.mask = pygame.mask.from_surface(self.sprite)
+
 
 def get_background(name):
     image = pygame.image.load(join("assets", "Background", name))
@@ -227,21 +261,21 @@ def handle_move(player, objects):
     keys = pygame.key.get_pressed()
 
     player.x_vel = 0
+    player.y_vel = 0
+
     collide_left = collide(player, objects, -PLAYER_VEL * 2)
     collide_right = collide(player, objects, PLAYER_VEL * 2)
 
-    if(player.direction == "up"):
-        player.y_vel = 0
-        player.fall_count = 0
 
+    if keys[pygame.K_UP] or keys[pygame.K_w]:
+        player.move_up(PLAYER_VEL**0.5)
+    if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+        player.move_down(PLAYER_VEL**1.1)
     if (keys[pygame.K_LEFT] or keys[pygame.K_a]) and not collide_left:
         player.move_left(PLAYER_VEL)
     if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and not collide_right:
         player.move_right(PLAYER_VEL)
-    if keys[pygame.K_UP] or keys[pygame.K_w]:
-        player.move_up(PLAYER_VEL**0.5)
-    if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-        player.move_down(PLAYER_VEL**0.5)
+
 
     handle_vertical_collision(player, objects, player.y_vel)
 
@@ -252,27 +286,53 @@ def main(window):
     block_size = 128
 
     player = Player(500,800,64,64)
-    snowball = [SnowBall(block_size * 2, 0, block_size)]
-    wall_right = [Wall(WIDTH - block_size,HEIGHT - i * block_size, block_size) for i in range(-WIDTH // block_size, WIDTH * 2 // block_size)]
-    wall_left  = [Wall(0, HEIGHT - i * block_size, block_size) for i in range(-WIDTH // block_size, WIDTH * 2 // block_size)]
+    snowball = SnowBall(block_size * 2, 0, 2* block_size)
+    wall_right = [Wall(WIDTH - block_size,HEIGHT - (i - 1) * block_size, block_size) for i in range(-WIDTH // block_size, WIDTH * 2 // block_size)]
+    wall_left  = [Wall(0, HEIGHT -(i - 1) * block_size, block_size) for i in range((-WIDTH // block_size), WIDTH * 2 // block_size)]
     floor = [Block(i * block_size, HEIGHT - block_size, block_size) for i in range(-WIDTH // block_size, WIDTH * 2 // block_size)]
-    #blocks = [Block(0, HEIGHT - block_size, block_size)]
-    objects  = [*floor, *wall_right, *wall_left]
+    objects  = [*wall_right, *wall_left, *floor]
+
+    snowballs = []
+
+    # Timer to control spawn interval
+    snowball_timer = 0
+    snowball_interval = 3000  # in milliseconds (5 seconds
+
 
 
     run = True
     while run:
-        clock.tick(FPS)
+        dt = clock.tick(FPS)
+        snowball_timer += dt
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
                 break
 
+            # Spawn a new snowball every 5 seconds
+        if snowball_timer >= snowball_interval:
+            snowball_x = random.randint(256, WIDTH - 256)
+            snowballs.append(SnowBall(snowball_x, -100, 256))
+            snowball_timer = 0
+
+        # Update snowballs and check for collision with player
+        for snowball in snowballs[:]:  # Use a copy of the list to safely remove items
+            snowball.update()
+
+            # Check collision using mask
+            offset_x = snowball.rect.x - player.rect.x
+            offset_y = snowball.rect.y - player.rect.y
+            if player.mask.overlap(snowball.mask, (offset_x, offset_y)):
+                snowballs.remove(snowball)
+
+        # Combine all objects for rendering
+        all_objects = objects + snowballs
 
         player.loop(FPS)
+
         handle_move(player, objects)
-        draw(window, background, bg_image, player, objects)
+        draw(window, background, bg_image, player, all_objects,)
 
     pygame.quit()
     quit()
