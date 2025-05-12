@@ -5,8 +5,6 @@ import pygame
 from os import listdir
 from os.path import isfile, join
 
-from poetry.console.commands import self
-
 pygame.init()
 
 pygame.display.set_caption("Pingo")
@@ -18,8 +16,9 @@ PLAYER_VEL = 7
 
 window = pygame.display.set_mode((WIDTH, HEIGHT))
 
-# After pygame.init()
 hit_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.mp3"))
+hurt_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.mp3"))
+walking_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.mp3"))
 
 
 def flip(sprites):
@@ -73,6 +72,7 @@ def get_block(size, name):
     return surface
 
 class Player(pygame.sprite.Sprite):
+    HEALTH = 100
     COLOR = (255, 0, 0)
     GRAVITY = 0.15
     SPRITES = load_sprite_sheets("MainCharacters", "Pingo", 128, 128, True)
@@ -181,8 +181,9 @@ class Wall(Object):
 class SnowBall(Object):
     SPRITES = load_sprite_sheets("Objects", "Snowball", 256, 256)
     ANIMATION_DELAY = 8
+    FONT = pygame.font.SysFont("arial", 60, bold=True)
 
-    def __init__(self, x, y, size):
+    def __init__(self, x, y, size, word):
         super().__init__(x, y, size, size)
         self.sprites = self.SPRITES["spin"]  # Assumes name of sprite sheet is 'spin.png'
         self.animation_count = 0
@@ -190,16 +191,120 @@ class SnowBall(Object):
         self.image.blit(self.sprite, (0, 0))
         self.mask = pygame.mask.from_surface(self.sprite)
         self.fall_speed = 3
+        self.word = word
+
+    def update_image_and_mask(self):
+        # Recreate image surface
+        self.image = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        self.image.blit(self.sprite, (0, 0))
+
+        # Render the word and center it
+        text_surface = self.FONT.render(self.word, True, (0, 0, 0))
+        text_rect = text_surface.get_rect(center=(self.width // 2, self.height // 2))
+        self.image.blit(text_surface, text_rect)
+
+        self.mask = pygame.mask.from_surface(self.image)
 
     def update(self):
         self.rect.y += self.fall_speed
         self.animation_count += 1
         sprite_index = (self.animation_count // self.ANIMATION_DELAY) % len(self.sprites)
         self.sprite = self.sprites[sprite_index]
+        self.update_image_and_mask()
 
-        self.image = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+class Boulder(Object):
+    SPRITES = load_sprite_sheets("Objects", "Snowball", 256, 256)
+    ANIMATION_DELAY = 8
+    FONT = pygame.font.SysFont("arial", 50, bold=True)
+
+
+    def __init__(self, x, y, size, word):
+        super().__init__(x, y, size, size)
+        self.sprites = self.SPRITES["spin"]  # Assumes name of sprite sheet is 'spin.png'
+        self.animation_count = 0
+        self.sprite = self.sprites[0]
         self.image.blit(self.sprite, (0, 0))
         self.mask = pygame.mask.from_surface(self.sprite)
+        self.fall_speed = 5
+        self.word = word
+
+    def update_image_and_mask(self):
+        # Recreate image surface
+        self.image = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        self.image.blit(self.sprite, (0, 0))
+
+        # Render the word and center it
+        text_surface = self.FONT.render(self.word, True, (0, 0, 0))
+        text_rect = text_surface.get_rect(center=(self.width // 2, self.height // 2))
+        self.image.blit(text_surface, text_rect)
+
+        self.mask = pygame.mask.from_surface(self.image)
+
+    def update(self):
+        self.rect.y += self.fall_speed
+        self.animation_count += 1
+        sprite_index = (self.animation_count // self.ANIMATION_DELAY) % len(self.sprites)
+        self.sprite = self.sprites[sprite_index]
+        self.update_image_and_mask()
+
+
+def snowBallLogic(snowballs,snowball, player):
+    # Check collision using mask
+    offset_x = snowball.rect.x - player.rect.x
+    offset_y = snowball.rect.y - player.rect.y
+    if player.mask and snowball.mask:
+        # Create a smaller area in the center of the snowball for collision
+        core_width = int(snowball.sprite.get_width() * 0.8)
+        core_height = int(snowball.sprite.get_height() * 0.4)
+        core_x = (snowball.sprite.get_width() - core_width) // 2
+        core_y = (snowball.sprite.get_height() - core_height) // 2
+
+        # Extract a smaller core surface
+        core_surface = pygame.Surface((core_width, core_height), pygame.SRCALPHA)
+        core_surface.blit(snowball.sprite, (0, 0), pygame.Rect(core_x, core_y, core_width, core_height))
+        core_mask = pygame.mask.from_surface(core_surface)
+
+        # Adjust offset for new mask
+        core_offset_x = snowball.rect.x + core_x - player.rect.x
+        core_offset_y = snowball.rect.y + core_y - player.rect.y
+
+        if player.mask.overlap(core_mask, (core_offset_x, core_offset_y)):
+            hit_sound.play()
+            print(snowball.word)
+            snowballs.remove(snowball)
+
+        if snowball.rect.y > HEIGHT - 256:
+            snowballs.remove(snowball)
+
+def boulderLogic(boulders, boulder, player):
+    # Check collision using mask
+    offset_x = boulder.rect.x - player.rect.x
+    offset_y = boulder.rect.y - player.rect.y
+    if player.mask and boulder.mask:
+        # Create a smaller area in the center of the snowball for collision
+        core_width = int(boulder.sprite.get_width() * 0.8)
+        core_height = int(boulder.sprite.get_height() * 0.4)
+        core_x = (boulder.sprite.get_width() - core_width) // 2
+        core_y = (boulder.sprite.get_height() - core_height) // 2
+
+        # Extract a smaller core surface
+        core_surface = pygame.Surface((core_width, core_height), pygame.SRCALPHA)
+        core_surface.blit(boulder.sprite, (0, 0), pygame.Rect(core_x, core_y, core_width, core_height))
+        core_mask = pygame.mask.from_surface(core_surface)
+
+        # Adjust offset for new mask
+        core_offset_x = boulder.rect.x + core_x - player.rect.x
+        core_offset_y = boulder.rect.y + core_y - player.rect.y
+
+        if player.mask.overlap(core_mask, (core_offset_x, core_offset_y)):
+            hit_sound.play()
+            print(boulder.word)
+            player.HEALTH -= 50
+            print(player.HEALTH)
+            boulders.remove(boulder)
+
+        if boulder.rect.y > HEIGHT - 256:
+            boulders.remove(boulder)
 
 
 def get_background(name):
@@ -279,27 +384,38 @@ def handle_move(player, objects):
 
     handle_vertical_collision(player, objects, player.y_vel)
 
+def load_words():
+    questions = ["one", "two", "three", "four", "five"]
+    answers = ["eins", "zwei", "drei", "vier", "fünf"]
+    return questions,answers
+
+index = 0
+
 def main(window):
+    global index
     clock = pygame.time.Clock()
     background, bg_image = get_background("Snow.png")
 
     block_size = 128
 
     player = Player(500,800,64,64)
-    snowball = SnowBall(block_size * 2, 0, 2* block_size)
+    snowball = SnowBall(block_size * 2, 0, 2* block_size, "test")
+    boulder = Boulder(block_size * 3, 0, 2 * block_size, "error")
     wall_right = [Wall(WIDTH - block_size,HEIGHT - (i - 1) * block_size, block_size) for i in range(-WIDTH // block_size, WIDTH * 2 // block_size)]
     wall_left  = [Wall(0, HEIGHT -(i - 1) * block_size, block_size) for i in range((-WIDTH // block_size), WIDTH * 2 // block_size)]
     floor = [Block(i * block_size, HEIGHT - block_size, block_size) for i in range(-WIDTH // block_size, WIDTH * 2 // block_size)]
     objects  = [*wall_right, *wall_left, *floor]
 
     snowballs = []
+    boulders = []
 
     # Timer to control spawn interval
     snowball_timer = 0
-    snowball_interval = 3000  # in milliseconds (5 seconds
+    snowball_interval = 7000  # in milliseconds (5 seconds
 
+    questions, answers = load_words()
 
-
+    gameOver = False
     run = True
     while run:
         dt = clock.tick(FPS)
@@ -309,44 +425,36 @@ def main(window):
             if event.type == pygame.QUIT:
                 run = False
                 break
+        if gameOver == False:
+                # Spawn a new snowball every 5 seconds
+            if snowball_timer >= snowball_interval:
+                displayed_word = random.choice(answers)
+                answers.remove(displayed_word)
+                displayed_wrong_answer = random.choice(answers)
 
-            # Spawn a new snowball every 5 seconds
-        if snowball_timer >= snowball_interval:
-            snowball_x = random.randint(256, WIDTH - 256)
-            snowballs.append(SnowBall(snowball_x, -100, 256))
-            snowball_timer = 0
+                snowball_x = random.randint(256, WIDTH - 256)
+                snowballs.append(SnowBall(snowball_x, -100, 256, displayed_word))
+                boulders.append(Boulder(snowball_x + 200, -100, 256, displayed_wrong_answer))
+                snowball_timer = 0
 
-        # Update snowballs and check for collision with player
-        for snowball in snowballs[:]:  # Use a copy of the list to safely remove items
-            snowball.update()
+            # Update snowballs and check for collision with player
+            for snowball in snowballs[:]:  # Use a copy of the list to safely remove items
+                snowball.update()
+                snowBallLogic(snowballs, snowball, player)
 
-            # Check collision using mask
-            offset_x = snowball.rect.x - player.rect.x
-            offset_y = snowball.rect.y - player.rect.y
-            if player.mask and snowball.mask:
-                # Create a smaller area in the center of the snowball for collision
-                core_width = int(snowball.sprite.get_width() * 0.8)
-                core_height = int(snowball.sprite.get_height() * 0.4)
-                core_x = (snowball.sprite.get_width() - core_width) // 2
-                core_y = (snowball.sprite.get_height() - core_height) // 2
+            for boulder in boulders[:]:
+                boulder.update()
+                boulderLogic(boulders,boulder,player)
 
-                # Extract a smaller core surface
-                core_surface = pygame.Surface((core_width, core_height), pygame.SRCALPHA)
-                core_surface.blit(snowball.sprite, (0, 0), pygame.Rect(core_x, core_y, core_width, core_height))
-                core_mask = pygame.mask.from_surface(core_surface)
-
-                # Adjust offset for new mask
-                core_offset_x = snowball.rect.x + core_x - player.rect.x
-                core_offset_y = snowball.rect.y + core_y - player.rect.y
-
-                if player.mask.overlap(core_mask, (core_offset_x, core_offset_y)):
-                    hit_sound.play()
-                    snowballs.remove(snowball)
 
         # Combine all objects for rendering
-        all_objects = objects + snowballs
-
-        player.loop(FPS)
+        all_objects = objects + snowballs + boulders
+        if player.HEALTH > 0:
+            player.loop(FPS)
+        else:
+            #player.rect.y = -500
+            gameOver = True
+            print("gameover!")
 
         handle_move(player, objects)
         draw(window, background, bg_image, player, all_objects,)
