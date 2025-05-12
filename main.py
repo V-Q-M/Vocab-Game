@@ -1,6 +1,7 @@
 import os
 import random
 import math
+import duckdb
 import pygame
 from os import listdir
 from os.path import isfile, join
@@ -14,12 +15,22 @@ WIDTH, HEIGHT = 1500, 1200
 FPS = 60
 PLAYER_VEL = 7
 
+conn = connection("duckdb")
+
 window = pygame.display.set_mode((WIDTH, HEIGHT))
 
 hit_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.mp3"))
 hurt_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.mp3"))
 walking_sound = pygame.mixer.Sound(join("assets", "Sounds", "hit.mp3"))
 
+def initiate_table():
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS vocabulary (
+        language text,
+        word text,
+        translation text,
+        );
+    """)
 
 def flip(sprites):
     return [pygame.transform.flip(sprite, True, False) for sprite in sprites]
@@ -383,6 +394,8 @@ def handle_move(player, objects):
 
 
     handle_vertical_collision(player, objects, player.y_vel)
+
+
 
 def load_words():
     questions = ["one", "two", "three", "four", "five"]
