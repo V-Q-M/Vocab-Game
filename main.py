@@ -32,6 +32,14 @@ def initiate_table():
         );
     """)
 
+language = "russian"
+
+def fetch_vocabulary():
+    conn.execute("""
+    FROM vocabulary WHERE language = (?)
+    ;
+    """),language
+
 def flip(sprites):
     return [pygame.transform.flip(sprite, True, False) for sprite in sprites]
 
