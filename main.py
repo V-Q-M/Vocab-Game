@@ -432,7 +432,7 @@ def handle_move(player, objects):
 
 def load_words():
     questions = ["привет", "спасибо", "да", "нет", "как", "кто", "что", "где"]
-    answers = ["hallo", "danke", "ja", "nein", "bitte", "wie", "wer", "was", "wo"]
+    answers = ["hallo", "danke", "ja", "nein", "bitte", "wie", "wer", "wo"]
     return questions,answers
 
 
