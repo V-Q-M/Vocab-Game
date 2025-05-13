@@ -88,7 +88,7 @@ class Player(pygame.sprite.Sprite):
     COLOR = (255, 0, 0)
     GRAVITY = 0.15
     SPRITES = load_sprite_sheets("MainCharacters", "Pingo", 128, 128, True)
-    ANIMATION_DELAY = 15
+    ANIMATION_DELAY = 3
     def __init__(self, x, y, width, height):
         super().__init__()
         self.rect = pygame.Rect(x, y, width, height)
@@ -149,7 +149,11 @@ class Player(pygame.sprite.Sprite):
 
         sprite_sheet_name = sprite_sheet + "_" + self.direction
         sprites = self.SPRITES[sprite_sheet_name]
-        sprite_index = self.animation_count // self.ANIMATION_DELAY % len(sprites)
+        if sprite_sheet == "idle":
+            sprite_index = self.animation_count // (self.ANIMATION_DELAY + 2) % len(sprites)
+        else:
+            sprite_index = self.animation_count // self.ANIMATION_DELAY % len(sprites)
+
         self.sprite = sprites[sprite_index]
         self.animation_count += 1
         self.update()
@@ -208,6 +212,9 @@ class SnowBall(Object):
         self.mask = pygame.mask.from_surface(self.sprite)
         self.fall_speed = 3.5
         self.word = word
+        self.hasCollided = False
+
+
 
     def update_image_and_mask(self):
         # Recreate image surface
@@ -233,8 +240,7 @@ class Boulder(Object):
     SPRITES = load_sprite_sheets("Objects", "Snowball", 256, 256)
     ANIMATION_DELAY = 6
     FONT = pygame.font.Font("assets/Fonts/pixel.TTF", 30)
-
-
+    hasCollided = False
 
     def __init__(self, x, y, size, word):
         super().__init__(x, y, size, size)
@@ -245,6 +251,7 @@ class Boulder(Object):
         self.mask = pygame.mask.from_surface(self.sprite)
         self.fall_speed = 3.5
         self.word = word
+        self.hasCollided = False
 
     def update_image_and_mask(self):
         # Recreate image surface
@@ -289,33 +296,40 @@ def snowBallLogic(snowballs,snowball, player, boulders):
         core_offset_x = snowball.rect.x + core_x - player.rect.x
         core_offset_y = snowball.rect.y + core_y - player.rect.y
 
-        if player.mask.overlap(core_mask, (core_offset_x, core_offset_y)):
-            hit_sound.play()
+        if player.mask.overlap(core_mask, (core_offset_x, core_offset_y)) and (not snowball.hasCollided):
+            hit_channel = pygame.mixer.Channel(3)
+            hit_channel.play(hit_sound)
             print(snowball.word)
             snowball_exists = False
+            snowball.hasCollided = True
+            destroy_snowball(snowball)
             change_all_boulders_to_rock(boulders)
             #correct_answers.remove(snowball.word)
             pick_next_word()
             words_guessed +=1
-            snowballs.remove(snowball)
+            #snowballs.remove(snowball)
 
         if snowball.rect.y > HEIGHT - 320:
-            fall_in_water_sound.play()
-            snowball_exists = False
-            change_all_boulders_to_rock(boulders)
+            if not snowball.hasCollided:
+                plop_channel = pygame.mixer.Channel(2)
+                plop_channel.play(fall_in_water_sound)
+                snowball_exists = False
+                change_all_boulders_to_rock(boulders)
+                pick_next_word()
             snowballs.remove(snowball)
-            pick_next_word()
+
 
 
 def boulderLogic(boulders, boulder, player):
     # Check collision using mask
     global flash_red, flash_timer
+
     offset_x = boulder.rect.x - player.rect.x
     offset_y = boulder.rect.y - player.rect.y
     if player.mask and boulder.mask:
         # Create a smaller area in the center of the snowball for collision
         core_width = int(boulder.sprite.get_width() * 0.8)
-        core_height = int(boulder.sprite.get_height() * 0.4)
+        core_height = int(boulder.sprite.get_height() * 0.8)
         core_x = (boulder.sprite.get_width() - core_width) // 2
         core_y = (boulder.sprite.get_height() - core_height) // 2
 
@@ -328,19 +342,22 @@ def boulderLogic(boulders, boulder, player):
         core_offset_x = boulder.rect.x + core_x - player.rect.x
         core_offset_y = boulder.rect.y + core_y - player.rect.y
 
-        if player.mask.overlap(core_mask, (core_offset_x, core_offset_y)):
+        if (player.mask.overlap(core_mask, (core_offset_x, core_offset_y))) and (not boulder.hasCollided):
             hit_sound.play()
             print(boulder.word)
             hurt_sound.play()
             flash_red = True
             flash_timer = pygame.time.get_ticks()
-
+            boulder.hasCollided = True
+            change_one_boulder_to_rock(boulder)
             player.HEALTH -= 34
             print(player.HEALTH)
-            boulders.remove(boulder)
+            #boulders.remove(boulder)
 
         if boulder.rect.y > HEIGHT - 320:
-            fall_in_water_sound.play()
+            plop_channel = pygame.mixer.Channel(2)
+            plop_channel.play(fall_in_water_sound)
+
             boulders.remove(boulder)
 
 
@@ -360,10 +377,11 @@ def draw(window, background, bg_image, player, objects):
     for tile in background:
         window.blit(bg_image, tile)
 
+    player.draw(window)
+
     for obj in objects:
         obj.draw(window)
 
-    player.draw(window)
 
     #pygame.display.update()
 
@@ -473,6 +491,20 @@ def change_all_boulders_to_rock(boulders):
         boulder.sprite = rock_sprites[0]
         boulder.update_image_and_mask()
 
+def change_one_boulder_to_rock(boulder):
+    rock_sprites = Boulder.SPRITES["rock"]
+    boulder.sprites = rock_sprites
+    boulder.animation_count = 0
+    boulder.sprite = rock_sprites[0]
+    boulder.update_image_and_mask()
+
+def destroy_snowball(snowball):
+    snowball_sprites = SnowBall.SPRITES["explosion"]
+    snowball.sprites = snowball_sprites
+    snowball.animation_count = 0
+    snowball.sprite = snowball_sprites[0]
+    snowball.word = ""
+    snowball.update_image_and_mask()
 
 
 def main(window):
